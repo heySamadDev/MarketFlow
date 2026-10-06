@@ -23,6 +23,26 @@ const validateRegister = (req, res, next) => {
   next();
 };
 
+const validateLogin = (req, res, next) => {
+  const { email, password } = req.body;
+
+  if (
+    !email ||
+    typeof email !== "string" ||
+    email.trim() === "" ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    throw new ApiError(400, "Please provide a valid email");
+  }
+
+  if (!password || typeof password !== "string") {
+    throw new ApiError(400, "Please provide a valid password");
+  }
+
+  next();
+};
+
 module.exports = {
   validateRegister,
+  validateLogin,
 };
