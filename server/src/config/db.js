@@ -6,7 +6,7 @@ const connectDB = async () => {
       dbName: "MarketFlow",
     });
 
-    console.log("Database connected!");
+    console.log("Database connected successfully");
   } catch (error) {
     throw error;
   }
