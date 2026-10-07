@@ -25,7 +25,14 @@ const findSession = async (sessionId) => {
   return data;
 };
 
+const clearSession = async (sessionId) => {
+  const sessionKey = `session:${sessionId}`;
+
+  await client.del(sessionKey);
+};
+
 module.exports = {
   createSession,
   findSession,
+  clearSession
 };

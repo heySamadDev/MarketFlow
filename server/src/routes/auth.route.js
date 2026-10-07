@@ -5,6 +5,7 @@ const {
   validateLogin,
 } = require("../middleware/auth.validation");
 const asyncHandler = require("../utils/asyncHandler");
+const authMiddleware = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
@@ -14,5 +15,7 @@ router.post(
   asyncHandler(authController.register),
 );
 router.post("/login", validateLogin, asyncHandler(authController.login));
+router.get("/me", asyncHandler(authMiddleware), authController.me);
+router.post("/logout", asyncHandler(authController.logout));
 
 module.exports = router;

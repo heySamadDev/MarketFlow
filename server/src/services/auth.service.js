@@ -1,7 +1,10 @@
 const userRepository = require("../repositories/user.repository");
 const bcrypt = require("bcrypt");
 const ApiError = require("../utils/ApiError");
-const { createSession } = require("../repositories/session.repository");
+const {
+  createSession,
+  clearSession,
+} = require("../repositories/session.repository");
 
 const register = async ({ name, email, password }) => {
   const user = await userRepository.findByEmail(email);
@@ -41,7 +44,12 @@ const login = async ({ email, password }) => {
   return { user: safeUser, sessionId };
 };
 
+const logout = async (sessionId) => {
+  await clearSession(sessionId);
+};
+
 module.exports = {
   register,
   login,
+  logout,
 };
