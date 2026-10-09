@@ -32,15 +32,14 @@ const findSession = async (sessionId) => {
 const clearSession = async (sessionId) => {
   const session = await findSession(sessionId);
 
-  if (!session) {
-    return;
+  if (session) {
+    const userSessionsKey = `user:${session.userId}:sessions`;
+    await client.sRem(userSessionsKey, sessionId);
   }
 
   const sessionKey = `session:${sessionId}`;
-  const userSessionsKey = `user:${session.userId}:sessions`;
 
   await client.del(sessionKey);
-  await client.sRem(userSessionsKey, sessionId);
 };
 
 const clearAllSessions = async (userId) => {
