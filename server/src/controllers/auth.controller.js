@@ -1,3 +1,4 @@
+const cookieConfig = require("../config/cookie");
 const authService = require("../services/auth.service");
 const ApiResponse = require("../utils/ApiResponse");
 
@@ -14,12 +15,7 @@ const login = async (req, res) => {
 
   const result = await authService.login(userData);
 
-  res.cookie("sessionId", result.sessionId, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "lax",
-    maxAge: 60 * 1000,
-  });
+  res.cookie("sessionId", result.sessionId, cookieConfig);
 
   res
     .status(200)
@@ -30,23 +26,36 @@ const me = (req, res) => {
   const userId = req.userId;
 
   res.status(200).json(new ApiResponse("Authorized", userId));
-}
+};
 
 const logout = async (req, res) => {
   const sessionId = req.cookies.sessionId;
 
-  if(sessionId){
+  if (sessionId) {
     await authService.logout(sessionId);
   }
 
   res.clearCookie("sessionId");
 
   res.status(200).json(new ApiResponse("User logged out successfully"));
-}
+};
+
+const logoutAll = async (req, res) => {
+  const userId = req.userId;
+
+  if (userId) {
+    await authService.logoutAll(userId);
+  }
+
+  res.clearCookie("sessionId");
+
+  res.status(200).json(new ApiResponse("User logged out from all devices"));
+};
 
 module.exports = {
   register,
   login,
   me,
-  logout
+  logout,
+  logoutAll,
 };

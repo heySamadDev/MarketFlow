@@ -4,6 +4,7 @@ const ApiError = require("../utils/ApiError");
 const {
   createSession,
   clearSession,
+  clearAllSessions,
 } = require("../repositories/session.repository");
 
 const register = async ({ name, email, password }) => {
@@ -48,8 +49,13 @@ const logout = async (sessionId) => {
   await clearSession(sessionId);
 };
 
+const logoutAll = async (userId) => {
+  await clearAllSessions(userId);
+};
+
 module.exports = {
   register,
   login,
   logout,
+  logoutAll,
 };

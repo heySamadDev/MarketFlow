@@ -17,5 +17,10 @@ router.post(
 router.post("/login", validateLogin, asyncHandler(authController.login));
 router.get("/me", asyncHandler(authMiddleware), authController.me);
 router.post("/logout", asyncHandler(authController.logout));
+router.post(
+  "/logout-all",
+  asyncHandler(authMiddleware),
+  asyncHandler(authController.logoutAll),
+);
 
 module.exports = router;
