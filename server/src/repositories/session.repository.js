@@ -4,6 +4,7 @@ const { SESSION_TTL } = require("../config/env");
 
 const createSession = async (userId) => {
   const sessionId = crypto.randomBytes(32).toString("hex");
+  const csrfToken = crypto.randomBytes(32).toString("hex");
 
   const sessionKey = `session:${sessionId}`;
   const userSessionsKey = `user:${userId}:sessions`;
@@ -14,6 +15,7 @@ const createSession = async (userId) => {
     userId,
     createdAt: Date.now(),
     sessionRecordId,
+    csrfToken,
   });
 
   await client.set(sessionKey, sessionData, {

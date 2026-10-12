@@ -15,8 +15,9 @@ const authMiddleware = async (req, res, next) => {
 
   req.userId = session.userId;
   req.sessionId = sessionId;
+  req.csrfToken = session.csrfToken;
 
-  next();
+  return next();
 };
 
 module.exports = authMiddleware;
