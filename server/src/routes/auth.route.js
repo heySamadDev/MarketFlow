@@ -22,5 +22,20 @@ router.post(
   asyncHandler(authMiddleware),
   asyncHandler(authController.logoutAll),
 );
+router.get(
+  "/sessions",
+  asyncHandler(authMiddleware),
+  asyncHandler(authController.getSessions),
+);
+router.delete(
+  "/sessions/:sessionRecordId",
+  asyncHandler(authMiddleware),
+  asyncHandler(authController.revokeSession),
+);
+router.post(
+  "/sessions/revoke-others",
+  asyncHandler(authMiddleware),
+  asyncHandler(authController.revokeOtherSessions),
+);
 
 module.exports = router;

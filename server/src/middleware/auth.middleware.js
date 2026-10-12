@@ -3,6 +3,7 @@ const sessionRepository = require("../repositories/session.repository");
 
 const authMiddleware = async (req, res, next) => {
   const sessionId = req.cookies.sessionId;
+
   if (!sessionId) {
     throw new ApiError(401, "Authentication required");
   }
@@ -13,6 +14,7 @@ const authMiddleware = async (req, res, next) => {
   }
 
   req.userId = session.userId;
+  req.sessionId = sessionId;
 
   next();
 };

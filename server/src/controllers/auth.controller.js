@@ -52,10 +52,36 @@ const logoutAll = async (req, res) => {
   res.status(200).json(new ApiResponse("User logged out from all devices"));
 };
 
+const getSessions = async (req, res) => {
+  const sessions = await authService.getUserSessions(req.userId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse("Active sessions fetched successfully", sessions));
+};
+
+const revokeSession = async (req, res) => {
+  const userId = req.userId;
+  const sessionRecordId = req.params.sessionRecordId;
+
+  await authService.revokeUserSessions(userId, sessionRecordId);
+
+  return res.status(200).json(new ApiResponse("Session revoked successfully"));
+};
+
+const revokeOtherSessions = async (req, res) => {
+  await authService.revokeOtherUserSessions(req.userId, req.sessionId);
+
+  res.status(200).json(new ApiResponse("Other sessions revoked successfully"));
+};
+
 module.exports = {
   register,
   login,
   me,
   logout,
   logoutAll,
+  getSessions,
+  revokeSession,
+  revokeOtherSessions,
 };

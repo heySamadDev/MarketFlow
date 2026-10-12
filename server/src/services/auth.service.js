@@ -5,6 +5,9 @@ const {
   createSession,
   clearSession,
   clearAllSessions,
+  getActiveSessions,
+  clearSessionByRecordId,
+  clearOtherSession,
 } = require("../repositories/session.repository");
 
 const register = async ({ name, email, password }) => {
@@ -53,9 +56,37 @@ const logoutAll = async (userId) => {
   await clearAllSessions(userId);
 };
 
+const getUserSessions = async (userId) => {
+  const sessions = await getActiveSessions(userId);
+
+  return sessions.map((session) => ({
+    sessionRecordId: session.sessionRecordId,
+    createdAt: session.createdAt,
+  }));
+};
+
+const revokeUserSessions = async (userId, sessionRecordId) => {
+  const revoke = await clearSessionByRecordId(userId, sessionRecordId);
+
+  if (!revoke) {
+    throw new ApiError(404, "Session not found");
+  }
+
+  return true;
+};
+
+const revokeOtherUserSessions = async (userId, currentSessionId) => {
+  await clearOtherSession(userId, currentSessionId);
+
+  return true;
+};
+
 module.exports = {
   register,
   login,
   logout,
   logoutAll,
+  getUserSessions,
+  revokeUserSessions,
+  revokeOtherUserSessions,
 };
