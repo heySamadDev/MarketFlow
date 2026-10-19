@@ -48,6 +48,18 @@ const login = async ({ email, password }) => {
   return { user: safeUser, sessionId };
 };
 
+const getCurrentUser = async (userId) => {
+  const user = await userRepository.findById(userId);
+
+  if (!user) {
+    throw new ApiError(401, "Authentication required");
+  }
+
+  const { password: _, ...safeUser } = user.toObject();
+
+  return safeUser;
+};
+
 const logout = async (sessionId) => {
   await clearSession(sessionId);
 };
@@ -84,6 +96,7 @@ const revokeOtherUserSessions = async (userId, currentSessionId) => {
 module.exports = {
   register,
   login,
+  getCurrentUser,
   logout,
   logoutAll,
   getUserSessions,

@@ -22,10 +22,12 @@ const login = async (req, res) => {
     .json(new ApiResponse("User logged in successfully", result.user));
 };
 
-const me = (req, res) => {
+const me = async (req, res) => {
   const userId = req.userId;
 
-  res.status(200).json(new ApiResponse("Authorized", userId));
+  const result = await authService.getCurrentUser(userId);
+
+  res.status(200).json(new ApiResponse("Authorized", result));
 };
 
 const logout = async (req, res) => {
