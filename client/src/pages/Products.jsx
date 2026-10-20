@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import productService from "../services/product.service";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchProducts } from "../features/products/productThunks";
 
 const initialForm = {
   name: "",
@@ -20,7 +23,22 @@ export default function Products() {
   const [images, setImages] = useState([]);
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [formError, setFormError] = useState("");
+  const dispatch = useDispatch();
+  const { products, isLoading, error } = useSelector((state) => state.products);
 
+  const filteredProducts = products.filter((product) => {
+    const searchTerm = search.trim().toLowerCase();
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchTerm) ||
+      product.description.toLowerCase().includes(searchTerm);
+    const matchesCategory =
+      category === "All categories" || product.category === category;
+    return matchesSearch && matchesCategory;
+  });
+
+  useEffect(() => {
+    dispatch(fetchProducts());
+  }, [dispatch]);
   useEffect(() => {
     return () => {
       images.forEach((image) => URL.revokeObjectURL(image.preview));
@@ -39,21 +57,18 @@ export default function Products() {
 
   function handleChange(event) {
     const { name, value } = event.target;
-
     setForm((current) => ({
       ...current,
       [name]: value,
     }));
   }
 
+  const allowedImageMimeTypes = ["image/png", "image/jpeg", "image/webp"];
   function handleImageSelection(event) {
     const selectedFiles = Array.from(event.target.files ?? []);
     event.target.value = "";
-
     if (!selectedFiles.length) return;
-
     const remainingSlots = MAX_IMAGES - images.length;
-
     if (remainingSlots <= 0) {
       setFormError(`You can select up to ${MAX_IMAGES} images.`);
       return;
@@ -61,30 +76,27 @@ export default function Products() {
 
     const acceptedImages = [];
     const errors = [];
-
     for (const file of selectedFiles) {
-      if (!file.type.startsWith("image/")) {
-        errors.push(`${file.name} is not an image.`);
+      if (!allowedImageMimeTypes.includes(file.type)) {
+        errors.push(
+          `${file.name} has an unsupported image format. Use JPEG, PNG, or WebP.`,
+        );
         continue;
       }
-
       if (file.size > MAX_IMAGE_SIZE) {
         errors.push(`${file.name} exceeds the 5 MB limit.`);
         continue;
       }
-
       if (images.length + acceptedImages.length >= MAX_IMAGES) {
         errors.push(`You can select up to ${MAX_IMAGES} images.`);
         break;
       }
-
       acceptedImages.push({
         id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
         file,
         preview: URL.createObjectURL(file),
       });
     }
-
     setImages((current) => [...current, ...acceptedImages]);
     setFormError(errors.join(" "));
   }
@@ -92,14 +104,11 @@ export default function Products() {
   function removeImage(indexToRemove) {
     setImages((current) => {
       const removedImage = current[indexToRemove];
-
       if (removedImage) {
         URL.revokeObjectURL(removedImage.preview);
       }
-
       return current.filter((_, index) => index !== indexToRemove);
     });
-
     setMainImageIndex((current) => {
       if (indexToRemove === current) return 0;
       if (indexToRemove < current) return current - 1;
@@ -107,30 +116,26 @@ export default function Products() {
     });
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
-
     if (!form.name.trim()) {
       setFormError("Please enter a product name.");
       return;
     }
-
     if (!form.description.trim()) {
       setFormError("Please enter a product description.");
       return;
     }
-
     if (!form.category) {
       setFormError("Please select a category.");
       return;
     }
-
-    if (form.price === "" || Number(form.price) <= 0) {
-      setFormError("Price must be greater than zero.");
+    const price = Number(form.price);
+    if (form.price.trim() === "" || !Number.isFinite(price) || price <= 0) {
+      setFormError("Price must be a valid number greater than zero.");
       return;
     }
-
     if (
       form.stock === "" ||
       !Number.isInteger(Number(form.stock)) ||
@@ -139,29 +144,31 @@ export default function Products() {
       setFormError("Stock must be a whole number of zero or more.");
       return;
     }
-
     if (images.length === 0) {
       setFormError("Please select at least one product image.");
       return;
     }
 
-    const productDraft = {
-      ...form,
-      name: form.name.trim(),
-      description: form.description.trim(),
-      price: Number(form.price),
-      stock: Number(form.stock),
-      images: images.map((image, index) => ({
-        file: image.file,
-        isMain: index === mainImageIndex,
-      })),
-    };
+    const productData = new FormData();
+    productData.append("name", form.name.trim());
+    productData.append("description", form.description.trim());
+    productData.append("category", form.category);
+    productData.append("price", String(price));
+    productData.append("stock", String(Number(form.stock)));
+    images.forEach((image) => {
+      productData.append("images", image.file);
+    });
 
-    // UI-only for now. We'll connect this form to the backend later.
-    console.log("Product draft:", productDraft);
-    setFormError(
-      "Form validated successfully. Product saving will be added with backend integration.",
-    );
+    try {
+      await productService.createProduct(productData);
+      setIsFormOpen(false);
+      dispatch(fetchProducts());
+    } catch (error) {
+      setFormError(
+        error.response?.data?.message ||
+          "Failed to create product. Please try again.",
+      );
+    }
   }
 
   return (
@@ -179,7 +186,6 @@ export default function Products() {
             inventory from one place.
           </p>
         </div>
-
         <button
           type="button"
           onClick={openForm}
@@ -191,12 +197,21 @@ export default function Products() {
           Add product
         </button>
       </section>
-
       <section className="mt-8 grid gap-4 sm:grid-cols-3">
         {[
-          ["Total products", "—", "Catalog overview"],
-          ["In stock", "—", "Inventory overview"],
-          ["Low stock", "—", "Inventory alerts"],
+          ["Total products", products.length, "Catalog overview"],
+          [
+            "In stock",
+            products.filter((product) => product.stock > 0).length,
+            "Products with available inventory",
+          ],
+          [
+            "Low stock",
+            products.filter(
+              (product) => product.stock > 0 && product.stock <= 5,
+            ).length,
+            "Products with 1–5 items remaining",
+          ],
         ].map(([title, value, description]) => (
           <div
             key={title}
@@ -208,7 +223,6 @@ export default function Products() {
           </div>
         ))}
       </section>
-
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5">
           <label className="relative min-w-0 flex-1">
@@ -227,7 +241,6 @@ export default function Products() {
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
             />
           </label>
-
           <label>
             <span className="sr-only">Filter by category</span>
             <select
@@ -242,33 +255,109 @@ export default function Products() {
             </select>
           </label>
         </div>
-
-        <div className="px-5 py-16 text-center sm:px-8 sm:py-20">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-3xl text-indigo-600">
-            ▦
+        {isLoading ? (
+          <div className="px-5 py-16 text-center sm:px-8 sm:py-20">
+            <p className="text-sm text-slate-500">Loading products...</p>
           </div>
-          <h2 className="mt-5 text-lg font-semibold">
-            Your catalog starts here
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-            Your products will appear here once you add them. Start building
-            your catalog to keep your store organized.
-          </p>
-          <button
-            type="button"
-            onClick={openForm}
-            className="mt-6 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-          >
-            + Add your first product
-          </button>
-        </div>
+        ) : error ? (
+          <div className="px-5 py-16 text-center sm:px-8 sm:py-20">
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+            <button
+              type="button"
+              onClick={() => dispatch(fetchProducts())}
+              className="mt-4 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Try again
+            </button>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="px-5 py-16 text-center sm:px-8 sm:py-20">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-3xl text-indigo-600">
+              ▦
+            </div>
+            <h2 className="mt-5 text-lg font-semibold">
+              {products.length === 0
+                ? "Your catalog starts here"
+                : "No products found"}
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              {products.length === 0
+                ? "Your products will appear here once you add them. Start building your catalog to keep your store organized."
+                : "Try a different search term or category filter."}
+            </p>
+            {products.length === 0 && (
+              <button
+                type="button"
+                onClick={openForm}
+                className="mt-6 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              >
+                + Add your first product
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
+            {filteredProducts.map((product) => {
+              const mainImage =
+                product.images?.find((image) => image.isMain) ||
+                product.images?.[0];
+              return (
+                <article
+                  key={product._id}
+                  className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:shadow-sm"
+                >
+                  {mainImage ? (
+                    <img
+                      src={mainImage.url}
+                      alt={product.name}
+                      className="h-48 w-full bg-slate-100 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-48 items-center justify-center bg-slate-100 text-sm text-slate-400">
+                      No image available
+                    </div>
+                  )}
+                  <div className="space-y-2 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                      {product.category}
+                    </p>
+                    <h2 className="text-base font-semibold text-slate-900">
+                      {product.name}
+                    </h2>
+                    <p className="line-clamp-2 min-h-10 text-sm leading-5 text-slate-500">
+                      {product.description}
+                    </p>
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                      <p className="font-bold text-slate-900">
+                        ₹{Number(product.price).toLocaleString("en-IN")}
+                      </p>
+                      <p
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          product.stock === 0
+                            ? "bg-red-50 text-red-600"
+                            : product.stock <= 5
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {product.stock === 0
+                          ? "Out of stock"
+                          : `${product.stock} in stock`}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
-
       <p className="mt-6 text-xs leading-5 text-slate-400">
-        Product counts and catalog data will appear here when backend
-        integration is implemented.
+        Showing {filteredProducts.length} of {products.length} products in your
+        catalog.
       </p>
-
       {isFormOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 py-8 backdrop-blur-sm sm:items-center"
@@ -303,7 +392,6 @@ export default function Products() {
                 ×
               </button>
             </div>
-
             <form onSubmit={handleSubmit} className="space-y-5 p-5 sm:p-7">
               <div>
                 <label
@@ -323,7 +411,6 @@ export default function Products() {
                   required
                 />
               </div>
-
               <div>
                 <label
                   htmlFor="product-description"
@@ -343,7 +430,6 @@ export default function Products() {
                   required
                 />
               </div>
-
               <div>
                 <label
                   htmlFor="product-category"
@@ -367,7 +453,6 @@ export default function Products() {
                   ))}
                 </select>
               </div>
-
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
                   <label
@@ -389,7 +474,6 @@ export default function Products() {
                     required
                   />
                 </div>
-
                 <div>
                   <label
                     htmlFor="product-stock"
@@ -411,7 +495,6 @@ export default function Products() {
                   />
                 </div>
               </div>
-
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <label
@@ -424,7 +507,6 @@ export default function Products() {
                     {images.length}/{MAX_IMAGES} selected
                   </span>
                 </div>
-
                 <label
                   htmlFor="product-images"
                   className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 px-5 py-8 text-center transition hover:border-indigo-400 hover:bg-indigo-50/50 ${
@@ -444,13 +526,12 @@ export default function Products() {
                 <input
                   id="product-images"
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   multiple
                   disabled={images.length >= MAX_IMAGES}
                   onChange={handleImageSelection}
                   className="sr-only"
                 />
-
                 {images.length > 0 && (
                   <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {images.map((image, index) => (
@@ -499,13 +580,13 @@ export default function Products() {
                   </div>
                 )}
               </div>
-
               {formError && (
                 <p
                   role="status"
                   aria-live="polite"
                   className={`rounded-xl px-4 py-3 text-sm ${
-                    formError.startsWith("Form validated")
+                    formError.startsWith("Form validated") ||
+                    formError.startsWith("Product created successfully")
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-red-50 text-red-700"
                   }`}
@@ -513,7 +594,6 @@ export default function Products() {
                   {formError}
                 </p>
               )}
-
               <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
                 <button
                   type="button"
