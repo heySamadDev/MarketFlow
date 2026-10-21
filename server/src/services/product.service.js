@@ -1,6 +1,6 @@
 const productRepository = require("../repositories/product.repository");
 const ApiError = require("../utils/ApiError");
-const { uploadImage } = require("../utils/cloudinaryUpload");
+const { uploadImage, deleteImage } = require("../utils/cloudinaryUpload");
 const cloudinary = require("../config/cloudinary");
 
 const DEFAULT_PAGE = 1;
@@ -92,7 +92,80 @@ const createProduct = async (sellerId, productData, files) => {
   }
 };
 
+const updateProduct = async (sellerId, productId, updatedData) => {
+  const product = await productRepository.findProductById(productId);
+
+  if (!product) {
+    throw new ApiError(404, "Product not found.");
+  }
+
+  if (product.seller.toString() !== sellerId.toString()) {
+    throw new ApiError(403, "You are not allowed to update this product.");
+  }
+
+  if (Object.keys(updatedData).length === 0) {
+    throw new ApiError(400, "At least one field is required to update.");
+  }
+
+  const allowedFields = ["name", "description", "category", "price", "stock"];
+
+  for (const field of Object.keys(updatedData)) {
+    if (!allowedFields.includes(field)) {
+      throw new ApiError(400, `Field '${field}' is not allowed to be updated`);
+    }
+  }
+
+  const updatedProduct = await productRepository.updateProductById(
+    productId,
+    updatedData,
+  );
+
+  if (!updatedProduct) {
+    throw new ApiError(404, "Product not found");
+  }
+
+  return updatedProduct;
+};
+
+const deleteProduct = async (sellerId, productId) => {
+  const product = await productRepository.findProductById(productId);
+
+  if (!product) {
+    throw new ApiError(404, "Product not found.");
+  }
+
+  if (product.seller.toString() !== sellerId.toString()) {
+    throw new ApiError(403, "You are not allowed to delete this product.");
+  }
+
+  const deletionResults = await Promise.allSettled(
+    product.images.map((image) => deleteImage(image.publicId)),
+  );
+
+  const failedDeletion = deletionResults.filter((item) => {
+    if (item.status === "rejected") {
+      return true;
+    }
+
+    const cloudinaryResult = item.value?.result;
+
+    return cloudinaryResult !== "ok" && cloudinaryResult !== "not found";
+  });
+
+  if (failedDeletion.length > 0) {
+    console.error("Cloudinary image deletion failures:", failedDeletion);
+
+    throw new ApiError(500, "Failed to delete product images.");
+  }
+
+  const deletedProduct = await productRepository.deleteProductById(productId);
+
+  return deletedProduct;
+};
+
 module.exports = {
   getProductsBySeller,
   createProduct,
+  updateProduct,
+  deleteProduct,
 };

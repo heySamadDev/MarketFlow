@@ -16,6 +16,12 @@ const errorHandler = (err, req, res, next) => {
     } else {
       message = "Invalid image upload.";
     }
+  } else if (err.name === "ValidationError") {
+    statusCode = 400;
+    message = "Validation failed.";
+  } else if (err.name === "CastError") {
+    statusCode = 400;
+    message = "Invalid resource ID.";
   } else if (err.statusCode >= 500 || !err.statusCode) {
     statusCode = 500;
     message = "Internal server error";

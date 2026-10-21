@@ -29,4 +29,9 @@ function uploadImage(buffer) {
   });
 }
 
-module.exports = { uploadImage };
+async function deleteImage(publicId) {
+  const result = await cloudinary.uploader.destroy(publicId);
+  return result;
+}
+
+module.exports = { uploadImage, deleteImage };

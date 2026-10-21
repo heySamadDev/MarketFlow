@@ -15,7 +15,7 @@ const findProductsBySeller = async (sellerId, page, limit) => {
 
   const [products, totalProducts] = await Promise.all([
     Product.find(filter)
-      .sort({ createAt: -1, _id: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit),
     Product.countDocuments(filter),
@@ -27,8 +27,21 @@ const findProductsBySeller = async (sellerId, page, limit) => {
   };
 };
 
+const updateProductById = (productId, updatedData) => {
+  return Product.findByIdAndUpdate(productId, updatedData, {
+    new: true,
+    runValidators: true,
+  });
+};
+
+const deleteProductById = (productId) => {
+  return Product.findByIdAndDelete(productId);
+};
+
 module.exports = {
   createProduct,
   findProductById,
   findProductsBySeller,
+  updateProductById,
+  deleteProductById,
 };

@@ -25,7 +25,36 @@ const createProduct = async (req, res) => {
     .json(new ApiResponse("Product created successfully", product));
 };
 
+const updateProduct = async (req, res) => {
+  const productId = req.params.productId;
+  const sellerId = req.userId;
+  const updates = req.body;
+
+  const result = await productService.updateProduct(
+    sellerId,
+    productId,
+    updates,
+  );
+
+  return res
+    .status(200)
+    .json(new ApiResponse("Product updated successfully.", result));
+};
+
+const deleteProduct = async (req, res) => {
+  const productId = req.params.productId;
+  const sellerId = req.userId;
+
+  const result = await productService.deleteProduct(sellerId, productId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse("Product deleted successfully", result));
+};
+
 module.exports = {
   getProductsBySeller,
   createProduct,
+  updateProduct,
+  deleteProduct,
 };
