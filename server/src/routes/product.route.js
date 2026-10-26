@@ -10,6 +10,12 @@ const router = express.Router();
 
 router.get("/", authMiddleware, productController.getProductsBySeller);
 
+router.get(
+  "/:productId",
+  authMiddleware,
+  asyncHandler(productController.getProductById),
+);
+
 router.post(
   "/",
   authMiddleware,

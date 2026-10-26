@@ -23,7 +23,7 @@ const getProductsBySeller = async (sellerId, query) => {
 
   const limit = Math.min(requestedLimit, MAX_LIMIT);
 
-  const { products, totalProducts } =
+  const { products, totalProducts, productStats } =
     await productRepository.findProductsBySeller(sellerId, page, limit);
 
   const totalPages = Math.ceil(totalProducts / limit);
@@ -40,7 +40,24 @@ const getProductsBySeller = async (sellerId, query) => {
       totalProducts,
       totalPages,
     },
+    stats: productStats,
   };
+};
+
+const getProductById = async (sellerId, productId) => {
+  const product = await productRepository.findProductById(productId);
+  if (!product) {
+    throw new ApiError(404, "Product not found.");
+  }
+
+  if (product.seller.toString() !== sellerId.toString()) {
+    throw new ApiError(
+      403,
+      "You are not allowed to view this product details.",
+    );
+  }
+
+  return product;
 };
 
 const createProduct = async (sellerId, productData, files) => {
@@ -165,6 +182,7 @@ const deleteProduct = async (sellerId, productId) => {
 
 module.exports = {
   getProductsBySeller,
+  getProductById,
   createProduct,
   updateProduct,
   deleteProduct,

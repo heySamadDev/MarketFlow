@@ -6,6 +6,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import PublicRoute from "./PublicRoute";
 import Products from "../pages/Products";
 import DashboardLayout from "../components/dashboard/DashboardLayout";
+import { ProductDetails } from "../pages/ProductDetails";
 
 export default function AppRoutes() {
   return (
@@ -22,6 +23,7 @@ export default function AppRoutes() {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/products" element={<Products />} />
+            <Route path="/products/:productId" element={<ProductDetails />} />
           </Route>
         </Route>
       </Routes>

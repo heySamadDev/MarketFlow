@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import productService from "../services/product.service";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchProducts } from "../features/products/productThunks";
+import {
+  fetchProducts,
+  updateProduct,
+  deleteProduct,
+} from "../features/products/productThunks";
+import { Link } from "react-router-dom";
 
 const initialForm = {
   name: "",
@@ -23,8 +28,23 @@ export default function Products() {
   const [images, setImages] = useState([]);
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [formError, setFormError] = useState("");
+
+  const [editingProduct, setEditingProduct] = useState(null);
+
+  const [editForm, setEditForm] = useState(initialForm);
+  const [editError, setEditError] = useState("");
+  const [isEditSaving, setIsEditSaving] = useState(false);
+
+  const [deletingProductId, setDeletingProductId] = useState(null);
+  const [actionError, setActionError] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const PRODUCTS_PER_PAGE = 10;
+
   const dispatch = useDispatch();
-  const { products, isLoading, error } = useSelector((state) => state.products);
+  const { products, isLoading, error, pagination, stats } = useSelector(
+    (state) => state.products,
+  );
 
   const filteredProducts = products.filter((product) => {
     const searchTerm = search.trim().toLowerCase();
@@ -37,8 +57,14 @@ export default function Products() {
   });
 
   useEffect(() => {
-    dispatch(fetchProducts());
-  }, [dispatch]);
+    dispatch(
+      fetchProducts({
+        page: currentPage,
+        limit: PRODUCTS_PER_PAGE,
+      }),
+    );
+  }, [dispatch, currentPage]);
+
   useEffect(() => {
     return () => {
       images.forEach((image) => URL.revokeObjectURL(image.preview));
@@ -64,11 +90,13 @@ export default function Products() {
   }
 
   const allowedImageMimeTypes = ["image/png", "image/jpeg", "image/webp"];
+
   function handleImageSelection(event) {
     const selectedFiles = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!selectedFiles.length) return;
     const remainingSlots = MAX_IMAGES - images.length;
+
     if (remainingSlots <= 0) {
       setFormError(`You can select up to ${MAX_IMAGES} images.`);
       return;
@@ -109,6 +137,7 @@ export default function Products() {
       }
       return current.filter((_, index) => index !== indexToRemove);
     });
+
     setMainImageIndex((current) => {
       if (indexToRemove === current) return 0;
       if (indexToRemove < current) return current - 1;
@@ -162,12 +191,113 @@ export default function Products() {
     try {
       await productService.createProduct(productData);
       setIsFormOpen(false);
+      setForm(initialForm);
+      setImages([]);
       dispatch(fetchProducts());
     } catch (error) {
       setFormError(
         error.response?.data?.message ||
           "Failed to create product. Please try again.",
       );
+    }
+  }
+
+  function openEditForm(product) {
+    setEditingProduct(product);
+    setEditError("");
+
+    setEditForm({
+      name: product.name,
+      description: product.description || "",
+      category: product.category,
+      price: String(product.price),
+      stock: String(product.stock),
+    });
+  }
+
+  function handleEditChange(event) {
+    const { name, value } = event.target;
+
+    setEditForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  async function handleEditSubmit(event) {
+    event.preventDefault();
+
+    if (!editingProduct || isEditSaving) return;
+
+    setEditError("");
+
+    const price = Number(editForm.price);
+    const stock = Number(editForm.stock);
+
+    if (!editForm.name.trim() || !editForm.description.trim()) {
+      setEditError("Name and description are required.");
+      return;
+    }
+
+    if (!editForm.category) {
+      setEditError("Please select a category.");
+      return;
+    }
+
+    if (editForm.price.trim() === "" || !Number.isFinite(price) || price <= 0) {
+      setEditError("Price must be greater than zero.");
+      return;
+    }
+
+    if (editForm.stock.trim() === "" || !Number.isInteger(stock) || stock < 0) {
+      setEditError("Stock must be a whole number of zero or more.");
+      return;
+    }
+
+    setIsEditSaving(true);
+
+    try {
+      const result = await dispatch(
+        updateProduct({
+          productId: editingProduct._id,
+          productData: {
+            name: editForm.name.trim(),
+            description: editForm.description.trim(),
+            category: editForm.category,
+            price,
+            stock,
+          },
+        }),
+      );
+
+      if (updateProduct.fulfilled.match(result)) {
+        setEditingProduct(null);
+      } else {
+        setEditError(result.payload || "Failed to update product.");
+      }
+    } finally {
+      setIsEditSaving(false);
+    }
+  }
+
+  async function handleDeleteProduct(product) {
+    const confirmed = window.confirm(
+      `Delete "${product.name}"? This action cannot be undone.`,
+    );
+
+    if (!confirmed || deletingProductId) return;
+
+    setActionError("");
+    setDeletingProductId(product._id);
+
+    try {
+      const result = await dispatch(deleteProduct(product._id));
+
+      if (!deleteProduct.fulfilled.match(result)) {
+        setActionError(result.payload || "Failed to delete product.");
+      }
+    } finally {
+      setDeletingProductId(null);
     }
   }
 
@@ -199,17 +329,15 @@ export default function Products() {
       </section>
       <section className="mt-8 grid gap-4 sm:grid-cols-3">
         {[
-          ["Total products", products.length, "Catalog overview"],
+          ["Total products", pagination.totalProducts, "Catalog overview"],
           [
             "In stock",
-            products.filter((product) => product.stock > 0).length,
+            stats.inStockProducts,
             "Products with available inventory",
           ],
           [
             "Low stock",
-            products.filter(
-              (product) => product.stock > 0 && product.stock <= 5,
-            ).length,
+            stats.lowStockProducts,
             "Products with 1–5 items remaining",
           ],
         ].map(([title, value, description]) => (
@@ -255,6 +383,14 @@ export default function Products() {
             </select>
           </label>
         </div>
+        {actionError && (
+          <p
+            role="alert"
+            className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {actionError}
+          </p>
+        )}
         {isLoading ? (
           <div className="px-5 py-16 text-center sm:px-8 sm:py-20">
             <p className="text-sm text-slate-500">Loading products...</p>
@@ -303,50 +439,79 @@ export default function Products() {
               const mainImage =
                 product.images?.find((image) => image.isMain) ||
                 product.images?.[0];
+
               return (
                 <article
                   key={product._id}
                   className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:shadow-sm"
                 >
-                  {mainImage ? (
-                    <img
-                      src={mainImage.url}
-                      alt={product.name}
-                      className="h-48 w-full bg-slate-100 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-48 items-center justify-center bg-slate-100 text-sm text-slate-400">
-                      No image available
-                    </div>
-                  )}
-                  <div className="space-y-2 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                      {product.category}
-                    </p>
-                    <h2 className="text-base font-semibold text-slate-900">
-                      {product.name}
-                    </h2>
-                    <p className="line-clamp-2 min-h-10 text-sm leading-5 text-slate-500">
-                      {product.description}
-                    </p>
-                    <div className="flex items-center justify-between gap-3 pt-2">
-                      <p className="font-bold text-slate-900">
-                        ₹{Number(product.price).toLocaleString("en-IN")}
+                  <Link to={`/products/${product._id}`} className="block">
+                    {mainImage ? (
+                      <img
+                        src={mainImage.url}
+                        alt={product.name}
+                        className="h-48 w-full bg-slate-100 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-48 items-center justify-center bg-slate-100 text-sm text-slate-400">
+                        No image available
+                      </div>
+                    )}
+
+                    <div className="space-y-2 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                        {product.category}
                       </p>
-                      <p
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          product.stock === 0
-                            ? "bg-red-50 text-red-600"
-                            : product.stock <= 5
-                              ? "bg-amber-50 text-amber-700"
-                              : "bg-emerald-50 text-emerald-700"
-                        }`}
-                      >
-                        {product.stock === 0
-                          ? "Out of stock"
-                          : `${product.stock} in stock`}
+
+                      <h2 className="text-base font-semibold text-slate-900">
+                        {product.name}
+                      </h2>
+
+                      <p className="line-clamp-2 min-h-10 text-sm leading-5 text-slate-500">
+                        {product.description}
                       </p>
+
+                      <div className="flex items-center justify-between gap-3 pt-2">
+                        <p className="font-bold text-slate-900">
+                          ₹{Number(product.price).toLocaleString("en-IN")}
+                        </p>
+
+                        <p
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            product.stock === 0
+                              ? "bg-red-50 text-red-600"
+                              : product.stock <= 5
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          {product.stock === 0
+                            ? "Out of stock"
+                            : `${product.stock} in stock`}
+                        </p>
+                      </div>
                     </div>
+                  </Link>
+
+                  <div className="flex gap-2 border-t border-slate-100 p-3">
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(product)}
+                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProduct(product)}
+                      disabled={deletingProductId === product._id}
+                      className="flex-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {deletingProductId === product._id
+                        ? "Deleting..."
+                        : "Delete"}
+                    </button>
                   </div>
                 </article>
               );
@@ -354,10 +519,38 @@ export default function Products() {
           </div>
         )}
       </section>
-      <p className="mt-6 text-xs leading-5 text-slate-400">
-        Showing {filteredProducts.length} of {products.length} products in your
-        catalog.
-      </p>
+
+      <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-500">
+          Page {pagination.page} of {pagination.totalPages || 1}
+          {" · "}
+          {pagination.totalProducts} total products
+        </p>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => page - 1)}
+            disabled={currentPage <= 1 || isLoading}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+
+          <span className="text-sm font-medium text-slate-600">
+            {pagination.page} / {pagination.totalPages || 1}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => page + 1)}
+            disabled={currentPage >= pagination.totalPages || isLoading}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
       {isFormOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 py-8 backdrop-blur-sm sm:items-center"
@@ -607,6 +800,193 @@ export default function Products() {
                   className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                 >
                   Validate product
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {editingProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 py-8 backdrop-blur-sm sm:items-center"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isEditSaving) {
+              setEditingProduct(null);
+              setEditError("");
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-product-title"
+            className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+          >
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 py-5 sm:px-7">
+              <div>
+                <h2
+                  id="edit-product-title"
+                  className="text-xl font-bold tracking-tight"
+                >
+                  Edit product
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Update your product details and inventory.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingProduct(null);
+                  setEditError("");
+                }}
+                disabled={isEditSaving}
+                aria-label="Close edit form"
+                className="rounded-lg p-2 text-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-5 p-5 sm:p-7">
+              <div>
+                <label
+                  htmlFor="edit-product-name"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Product name
+                </label>
+                <input
+                  id="edit-product-name"
+                  name="name"
+                  value={editForm.name}
+                  onChange={handleEditChange}
+                  maxLength={120}
+                  required
+                  disabled={isEditSaving}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-product-description"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Description
+                </label>
+                <textarea
+                  id="edit-product-description"
+                  name="description"
+                  value={editForm.description}
+                  onChange={handleEditChange}
+                  rows={4}
+                  maxLength={2000}
+                  required
+                  disabled={isEditSaving}
+                  className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-product-category"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Category
+                </label>
+                <select
+                  id="edit-product-category"
+                  name="category"
+                  value={editForm.category}
+                  onChange={handleEditChange}
+                  required
+                  disabled={isEditSaving}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">Select a category</option>
+                  {categories.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-product-price"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Price (₹)
+                  </label>
+                  <input
+                    id="edit-product-price"
+                    name="price"
+                    type="number"
+                    value={editForm.price}
+                    onChange={handleEditChange}
+                    min="0.01"
+                    step="0.01"
+                    required
+                    disabled={isEditSaving}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-product-stock"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Stock quantity
+                  </label>
+                  <input
+                    id="edit-product-stock"
+                    name="stock"
+                    type="number"
+                    value={editForm.stock}
+                    onChange={handleEditChange}
+                    min="0"
+                    step="1"
+                    required
+                    disabled={isEditSaving}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+              </div>
+
+              {editError && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                  {editError}
+                </p>
+              )}
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProduct(null);
+                    setEditError("");
+                  }}
+                  disabled={isEditSaving}
+                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isEditSaving}
+                  className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isEditSaving ? "Saving..." : "Save changes"}
                 </button>
               </div>
             </form>

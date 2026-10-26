@@ -11,6 +11,17 @@ const getProductsBySeller = async (req, res) => {
     .json(new ApiResponse("Product retrieved successfully", result));
 };
 
+const getProductById = async (req, res) => {
+  const productId = req.params.productId;
+  const sellerId = req.userId;
+
+  const result = await productService.getProductById(sellerId, productId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse("Product retrieved successfully.", result));
+};
+
 const createProduct = async (req, res) => {
   const sellerId = req.userId;
 
@@ -54,6 +65,7 @@ const deleteProduct = async (req, res) => {
 
 module.exports = {
   getProductsBySeller,
+  getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
