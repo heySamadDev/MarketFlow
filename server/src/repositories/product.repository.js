@@ -9,19 +9,44 @@ const findProductById = async (productId) => {
   return Product.findById(productId);
 };
 
-const findProductsBySeller = async (sellerId, page, limit) => {
+const escapeRegex = (value) => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const findProductsBySeller = async (sellerId, page, limit, filters = {}) => {
   const skip = (page - 1) * limit;
 
   const filter = { seller: sellerId };
 
+  const { search, category, stockStatus } = filters;
+
+  if (search) {
+    filter.name = {
+      $regex: escapeRegex(search),
+      $options: "i",
+    };
+  }
+
+  if (category) {
+    filter.category = category;
+  }
+
+  if (stockStatus === "inStock") {
+    filter.stock = { $gt: 0 };
+  } else if (stockStatus === "outOfStock") {
+    filter.stock = 0;
+  }
+
   const sellerObjectId = new mongoose.Types.ObjectId(sellerId);
 
-  const [products, totalProducts, stats] = await Promise.all([
+  const [products, filteredProducts, totalProducts, stats] = await Promise.all([
     Product.find(filter)
       .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit),
+
     Product.countDocuments(filter),
+    Product.countDocuments({ seller: sellerId }),
     Product.aggregate([
       {
         $match: {
@@ -31,25 +56,20 @@ const findProductsBySeller = async (sellerId, page, limit) => {
       {
         $group: {
           _id: null,
-
           inStockProducts: {
             $sum: {
-              $cond: {
-                if: { $gt: ["$stock", 0] },
-                then: 1,
-                else: 0,
-              },
+              $cond: [{ $gt: ["$stock", 0] }, 1, 0],
             },
           },
           lowStockProducts: {
             $sum: {
-              $cond: {
-                if: {
+              $cond: [
+                {
                   $and: [{ $gt: ["$stock", 0] }, { $lte: ["$stock", 5] }],
                 },
-                then: 1,
-                else: 0,
-              },
+                1,
+                0,
+              ],
             },
           },
         },
@@ -69,6 +89,7 @@ const findProductsBySeller = async (sellerId, page, limit) => {
 
   return {
     products,
+    filteredProducts,
     totalProducts,
     productStats,
   };

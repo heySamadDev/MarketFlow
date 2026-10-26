@@ -22,6 +22,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 export default function Products() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("All categories");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [form, setForm] = useState(initialForm);
@@ -42,28 +43,34 @@ export default function Products() {
   const PRODUCTS_PER_PAGE = 10;
 
   const dispatch = useDispatch();
-  const { products, isLoading, error, pagination, stats } = useSelector(
-    (state) => state.products,
-  );
+  const {
+    products,
+    isLoading,
+    error,
+    pagination,
+    stats,
+    catalogTotalProducts,
+  } = useSelector((state) => state.products);
 
-  const filteredProducts = products.filter((product) => {
-    const searchTerm = search.trim().toLowerCase();
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm) ||
-      product.description.toLowerCase().includes(searchTerm);
-    const matchesCategory =
-      category === "All categories" || product.category === category;
-    return matchesSearch && matchesCategory;
-  });
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setCurrentPage(1);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     dispatch(
       fetchProducts({
         page: currentPage,
         limit: PRODUCTS_PER_PAGE,
+        search: debouncedSearch,
+        ...(category !== "All categories" ? { category } : {}),
       }),
     );
-  }, [dispatch, currentPage]);
+  }, [dispatch, currentPage, debouncedSearch, category]);
 
   useEffect(() => {
     return () => {
@@ -193,7 +200,18 @@ export default function Products() {
       setIsFormOpen(false);
       setForm(initialForm);
       setImages([]);
-      dispatch(fetchProducts());
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+      } else {
+        dispatch(
+          fetchProducts({
+            page: 1,
+            limit: PRODUCTS_PER_PAGE,
+            search: debouncedSearch,
+            ...(category !== "All categories" ? { category } : {}),
+          }),
+        );
+      }
     } catch (error) {
       setFormError(
         error.response?.data?.message ||
@@ -329,7 +347,7 @@ export default function Products() {
       </section>
       <section className="mt-8 grid gap-4 sm:grid-cols-3">
         {[
-          ["Total products", pagination.totalProducts, "Catalog overview"],
+          ["Total products", catalogTotalProducts, "Catalog overview"],
           [
             "In stock",
             stats.inStockProducts,
@@ -373,7 +391,10 @@ export default function Products() {
             <span className="sr-only">Filter by category</span>
             <select
               value={category}
-              onChange={(event) => setCategory(event.target.value)}
+              onChange={(event) => {
+                setCategory(event.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 sm:w-48"
             >
               <option>All categories</option>
@@ -402,28 +423,37 @@ export default function Products() {
             </p>
             <button
               type="button"
-              onClick={() => dispatch(fetchProducts())}
+              onClick={() =>
+                dispatch(
+                  fetchProducts({
+                    page: currentPage,
+                    limit: PRODUCTS_PER_PAGE,
+                    search: debouncedSearch,
+                    ...(category !== "All categories" ? { category } : {}),
+                  }),
+                )
+              }
               className="mt-4 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Try again
             </button>
           </div>
-        ) : filteredProducts.length === 0 ? (
+        ) : products.length === 0 ? (
           <div className="px-5 py-16 text-center sm:px-8 sm:py-20">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-3xl text-indigo-600">
               ▦
             </div>
             <h2 className="mt-5 text-lg font-semibold">
-              {products.length === 0
+              {catalogTotalProducts === 0
                 ? "Your catalog starts here"
                 : "No products found"}
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-              {products.length === 0
+              {catalogTotalProducts === 0
                 ? "Your products will appear here once you add them. Start building your catalog to keep your store organized."
                 : "Try a different search term or category filter."}
             </p>
-            {products.length === 0 && (
+            {catalogTotalProducts === 0 && (
               <button
                 type="button"
                 onClick={openForm}
@@ -435,7 +465,7 @@ export default function Products() {
           </div>
         ) : (
           <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
-            {filteredProducts.map((product) => {
+            {products.map((product) => {
               const mainImage =
                 product.images?.find((image) => image.isMain) ||
                 product.images?.[0];

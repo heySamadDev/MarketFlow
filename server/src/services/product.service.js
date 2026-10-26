@@ -23,10 +23,48 @@ const getProductsBySeller = async (sellerId, query) => {
 
   const limit = Math.min(requestedLimit, MAX_LIMIT);
 
-  const { products, totalProducts, productStats } =
-    await productRepository.findProductsBySeller(sellerId, page, limit);
+  const { search, category, stockStatus } = query;
 
-  const totalPages = Math.ceil(totalProducts / limit);
+  if (search !== undefined && typeof search !== "string") {
+    throw new ApiError(400, "Search must be a string");
+  }
+
+  const normalizedSearch = search?.trim();
+
+  if (normalizedSearch && normalizedSearch.length > 120) {
+    throw new ApiError(400, "Search cannot exceed 120 characters");
+  }
+
+  const allowedCategories = ["Electronics", "Clothing", "Home & Living"];
+
+  if (category !== undefined && !allowedCategories.includes(category)) {
+    throw new ApiError(400, "Invalid product category");
+  }
+
+  const allowedStockStatuses = ["inStock", "outOfStock"];
+
+  if (
+    stockStatus !== undefined &&
+    !allowedStockStatuses.includes(stockStatus)
+  ) {
+    throw new ApiError(400, "Invalid stock status");
+  }
+
+  const filters = {
+    ...(normalizedSearch ? { search: normalizedSearch } : {}),
+    ...(category ? { category } : {}),
+    ...(stockStatus ? { stockStatus } : {}),
+  };
+
+  const { products, filteredProducts, totalProducts, productStats } =
+    await productRepository.findProductsBySeller(
+      sellerId,
+      page,
+      limit,
+      filters,
+    );
+
+  const totalPages = Math.ceil(filteredProducts / limit);
 
   if (totalPages > 0 && page > totalPages) {
     throw new ApiError(400, "Requested page is out of range");
@@ -37,9 +75,10 @@ const getProductsBySeller = async (sellerId, query) => {
     pagination: {
       page,
       limit,
-      totalProducts,
+      totalProducts: filteredProducts,
       totalPages,
     },
+    catalogTotalProducts: totalProducts,
     stats: productStats,
   };
 };

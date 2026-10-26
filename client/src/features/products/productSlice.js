@@ -26,6 +26,8 @@ const initialState = {
     inStockProducts: 0,
     lowStockProducts: 0,
   },
+
+  catalogTotalProducts: 0,
 };
 
 const productSlice = createSlice({
@@ -43,6 +45,7 @@ const productSlice = createSlice({
         state.products = action.payload.data.products;
         state.pagination = action.payload.data.pagination;
         state.stats = action.payload.data.stats;
+        state.catalogTotalProducts = action.payload.data.catalogTotalProducts;
       })
       .addCase(fetchProducts.rejected, (state, action) => {
         state.isLoading = false;
